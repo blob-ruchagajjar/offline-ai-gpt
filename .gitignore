@@ -1,0 +1,26 @@
+﻿# Visual Studio
+.vs/
+
+# Build output
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Logs
+*.log
+
+# Temporary files
+~*
+
+# Publish output
+publish/
+
+# Resharper / Rider
+_ReSharper*/
+*.DotSettings.user
+
+# Cache
+*.cache
