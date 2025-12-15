@@ -24,3 +24,6 @@ _ReSharper*/
 
 # Cache
 *.cache
+
+#large sized AI models
+Models/
