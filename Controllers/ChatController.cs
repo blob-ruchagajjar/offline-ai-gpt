@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using offline_ai_gpt.ApiModels;
 using offline_ai_gpt.Models;
 using offline_ai_gpt.Services;
+using System.Text.RegularExpressions;
 
 namespace offline_ai_gpt.Controllers
 {
@@ -27,13 +28,24 @@ namespace offline_ai_gpt.Controllers
                 return;
             }
 
+            // Set headers for streaming response
+            Response.StatusCode = 200;
+            Response.ContentType = "text/plain; charset=utf-8";
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+            Response.Headers.Connection = "keep-alive";
+            Response.Headers.Append("X-Accel-Buffering", "no");
+
             try
             {
-                await foreach (var chunk in _chatService.StreamAsync(req.Message, ct).WithCancellation(ct))
+                await foreach (var chunk in _chatService.StreamAsync(req.Message, ct))
                 {
-                    // Write chunk and flush so client receives it immediately
-                    await Response.WriteAsync(chunk, ct);
-                    await Response.Body.FlushAsync(ct);
+                    var cleaned = System.Text.RegularExpressions.Regex.Replace(chunk, @"<\|[^|]+\|>", "");
+
+                    if (!string.IsNullOrWhiteSpace(cleaned))
+                    {
+                        await Response.WriteAsync(cleaned, ct);
+                        await Response.Body.FlushAsync(ct);
+                    }
                 }
             }
             catch (InvalidOperationException ex)
@@ -48,16 +60,7 @@ namespace offline_ai_gpt.Controllers
             }
             catch (Exception ex)
             {
-                Response.StatusCode = 500;
-                try
-                {
-                    await Response.WriteAsync($"[ERROR] {ex.Message}", ct);
-                    await Response.Body.FlushAsync(ct);
-                }
-                catch
-                {
-                    // ignore any exceptions while trying to report the error to the client
-                }
+                await Response.WriteAsync($"[ERROR] {ex.Message}", ct);
             }
         }
 

@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 
 namespace offline_ai_gpt.Services
 {
-    public class ChatService:IDisposable
+    public class ChatService : IDisposable
     {
         private readonly object _loadLock = new();
         private LLamaWeights? _model;
@@ -17,7 +17,7 @@ namespace offline_ai_gpt.Services
         public string? LoadedModelPath { get; private set; }
         public ChatService()
         {
-            
+
         }
 
         public async Task LoadModel(string fullPath)
@@ -64,7 +64,9 @@ namespace offline_ai_gpt.Services
         public async IAsyncEnumerable<string> StreamAsync(string userMessage, [EnumeratorCancellation] CancellationToken ct = default)
         {
             if (_model == null || _context == null)
+            {
                 throw new InvalidOperationException("No model loaded. Call LoadModel(...) or set MODEL_PATH before start.");
+            }
 
             // Ensure only one generation uses the model/context at a time
             await _useSemaphore.WaitAsync(ct).ConfigureAwait(false);
@@ -72,35 +74,40 @@ namespace offline_ai_gpt.Services
             {
                 var executor = new StatelessExecutor(_model, _context.Params);
 
-                var prompt = BuildPrompt(userMessage);
+                var prompt = $"You are a helpful AI assistant.\nUser: {userMessage}\nAssistant:";
 
                 var inference = new InferenceParams
                 {
-                    MaxTokens = 200,
+                    MaxTokens = 512,
                     SamplingPipeline = new DefaultSamplingPipeline
                     {
-                        Temperature = 0.6f,
-                        TopP = 0.85f,
-                        TopK = 25
+                        Temperature = 0.7f, //lower = more focused, less random
+                        TopP = 0.9f,//Avoids low-probability words
+                        TopK = 40, //Limits to the K most likely words
+                        RepeatPenalty = 1.1f //Penalizes words that have already been generated
                     },
-                    AntiPrompts = new List<string> { "<|eot_id|>" }
+                    AntiPrompts = new List<string>()
                 };
 
                 await foreach (var text in executor.InferAsync(prompt, inference).WithCancellation(ct))
                 {
-                    if (ct.IsCancellationRequested) yield break;
-                    if (!string.IsNullOrEmpty(text)) yield return text;
+                    if (ct.IsCancellationRequested)
+                    {
+                        yield break;
+                    }
+
+                    var cleaned = System.Text.RegularExpressions.Regex.Replace(text, @"<\|[^|]+\|>", "");
+
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        yield return text;
+                    }
                 }
             }
             finally
             {
                 _useSemaphore.Release();
             }
-        }
-
-        private static string BuildPrompt(string userMessage)
-        {
-            return $@"<|start_header_id|>system<|end_header_id|>You are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>{userMessage}<|eot_id|><|start_header_id|>assistant<|end_header_id|>";
         }
 
         public void Dispose()
